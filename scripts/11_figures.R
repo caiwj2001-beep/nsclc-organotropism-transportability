@@ -96,19 +96,24 @@ pB <- ggplot(dB, aes(x = factor(organ, levels = c("Bone","CNS","Pleura","Liver",
         legend.key.size = unit(0.28, "cm"), legend.text = element_text(size = 7),
         plot.tag = element_text(size = 11, face = "bold"))
 
-# C. single-organ distribution
+# C. single-organ distribution across all seven solid organs
 dC <- rd("fig1c_single_organ.csv") %>% tidyr::pivot_longer(-organ, names_to = "hist", values_to = "pct")
-pC <- ggplot(dC, aes(x = factor(organ, levels = c("Bone","CNS","Pleura","Liver","Adrenal")),
-                     y = pct, fill = hist)) +
+ordC <- c("Bone","CNS","Pleura","Liver","Adrenal","Intra-abdominal","Reproductive","Other (not scored)")
+dC$organ <- factor(dC$organ, levels = rev(ordC))
+dC$grp <- ifelse(dC$organ == "Other (not scored)", "Other", as.character(dC$hist))
+pC <- ggplot(dC, aes(y = organ, x = pct, fill = grp)) +
   geom_col(position = position_dodge(width = 0.72), width = 0.66, colour = NA) +
   geom_text(aes(label = sprintf("%.1f", pct)), position = position_dodge(width = 0.72),
-            vjust = -0.35, size = 2.1, show.legend = FALSE) +
-  scale_fill_manual(values = HCOL, name = NULL) +
-  scale_y_continuous(limits = c(0, 30), expand = expansion(mult = c(0, 0.06))) +
-  labs(x = NULL, y = "Single-organ patients (%)", tag = "C",
-       subtitle = expression(chi^2 * " = 4.70, df = 6, " * italic(P) * " = .589")) +
-  theme(legend.position = "none", plot.subtitle = element_text(size = 7, colour = "#4A4F57"),
-        plot.tag = element_text(size = 11, face = "bold"))
+            hjust = -0.12, size = 1.75, show.legend = FALSE) +
+  scale_fill_manual(values = c(LUAD = NAVY, LUSC = CORAL, Other = "#B9BEC6"), name = NULL) +
+  scale_x_continuous(limits = c(0, 68), expand = expansion(mult = c(0, 0.04))) +
+  labs(x = "Single-organ patients (%)", y = NULL, tag = "C",
+       subtitle = paste0("n = 1,050 (LUAD 873, LUSC 177)
+",
+                          "seven solid organs: ", "χ² = 4.68, df = 6, P = .586
+",
+                          "grey = other, not scored")) +  theme(legend.position = "none", plot.subtitle = element_text(size = 6.4, colour = "#4A4F57"),
+        axis.text.y = element_text(size = 6.4), plot.tag = element_text(size = 11, face = "bold"))
 
 # D. mutation landscape (dumbbell: two rates per gene, no end labels -> no collisions)
 dD <- rd("fig1d_mutation.csv")
@@ -156,77 +161,59 @@ ggsave(file.path(FIG, "Figure1.png"), fig1, width = 7.2, height = 8.6, dpi = 300
 cat("Figure1 done\n")
 
 # ---------------------------------------------------------------- Figure 2 ---
+# single panel: annotation text shares the forest's coordinate system -> rows align by construction
 f2 <- rd("fig2_forest.csv")
-lvl <- unique(f2$label)                      # file order = Figure 3 order (adrenal first)
+lvl <- unique(f2$label)
 f2$label <- factor(f2$label, levels = rev(lvl))
-f2$y <- as.numeric(f2$label)
 lu <- subset(f2, stratum == "LUAD"); ls_ <- subset(f2, stratum == "LUSC")
-# match by label (never by position)
 grab <- function(d, col) d[[col]][match(levels(f2$label), as.character(d$label))]
-lu <- data.frame(label = levels(f2$label), y = as.numeric(levels(f2$label)) * 0 + seq_along(levels(f2$label)),
-                 OR = grab(lu, "OR"), lo = grab(lu, "lo"), hi = grab(lu, "hi"),
-                 p = grab(lu, "p"), p_int = grab(lu, "p_int"), mde = grab(lu, "mde"))
-ls_ <- data.frame(label = levels(f2$label),
-                  OR = grab(ls_, "OR"), lo = grab(ls_, "lo"), hi = grab(ls_, "hi"))
-lu$y <- (length(levels(f2$label)):1)
-ls_$y <- lu$y
-YL <- c(0.2, length(lvl) + 1.6); HEAD <- length(lvl) + 0.9
+nR <- length(levels(f2$label))
+key <- data.frame(label = levels(f2$label), y = nR:1,
+                  OR = grab(lu, "OR"), lo = grab(lu, "lo"), hi = grab(lu, "hi"),
+                  p_int = grab(lu, "p_int"), mde = grab(lu, "mde"),
+                  lOR = grab(ls_, "OR"), llo = grab(ls_, "lo"), lhi = grab(ls_, "hi"))
+HEAD <- nR + 0.95
+XCOL <- c(16, 74, 340, 1560)
+ann <- data.frame(
+  y = c(HEAD, key$y),
+  a = c("LUAD OR (95% CI)", sprintf("%.2f (%.2f\u2013%.2f)", key$OR, key$lo, key$hi)),
+  b = c("LUSC OR (95% CI)", sprintf("%.2f (%.2f\u2013%.2f)", key$lOR, key$llo, key$lhi)),
+  c = c("P int.", ifelse(key$p_int < 0.001, "<.001", sprintf("%.2f", key$p_int))),
+  d = c("MDE ratio", sprintf("%.1f", key$mde)), stringsAsFactors = FALSE)
+annl <- do.call(rbind, lapply(1:4, function(k)
+  data.frame(y = ann$y, x = XCOL[k], lab = ann[[k + 1]],
+             bold = ann$y == HEAD, stringsAsFactors = FALSE)))
 
-gg_f <- ggplot() +
+p2 <- ggplot() +
   geom_vline(xintercept = 1, linewidth = 0.3, colour = GREY, linetype = "22") +
-  geom_errorbar(data = lu, aes(y = y + 0.17, xmin = lo, xmax = hi), orientation = "y",
-                width = 0.11, linewidth = 0.5, colour = NAVY) +
-  geom_errorbar(data = ls_, aes(y = y - 0.17, xmin = lo, xmax = hi), orientation = "y",
-                width = 0.11, linewidth = 0.5, colour = CORAL) +
-  geom_point(data = lu, aes(y = y + 0.17, x = OR), shape = 21, size = 1.9, fill = "white",
-             colour = NAVY, stroke = 0.7) +
-  geom_point(data = ls_, aes(y = y - 0.17, x = OR), shape = 22, size = 1.7, fill = CORAL, colour = CORAL) +
-  scale_x_log10(breaks = c(0.5, 1, 2, 5, 10), labels = c("0.5","1","2","5","10"),
-                limits = c(0.22, 14)) +
-  scale_y_continuous(breaks = lu$y, labels = levels(f2$label), limits = YL, expand = c(0, 0)) +
-  labs(x = "Odds ratio (log scale)", y = NULL, tag = "A") +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank(),
-        axis.text.x = element_text(size = 7), plot.tag = element_text(size = 11, face = "bold"))
+  geom_text(data = annl, aes(x = x, y = y, label = lab,
+                             fontface = ifelse(bold, "bold", "plain")),
+            hjust = 0, size = 2.28) +
+  geom_errorbar(data = key, aes(y = y + 0.17, xmin = lo, xmax = hi), orientation = "y",
+                width = 0.10, linewidth = 0.5, colour = NAVY) +
+  geom_errorbar(data = key, aes(y = y - 0.17, xmin = llo, xmax = lhi), orientation = "y",
+                width = 0.10, linewidth = 0.5, colour = CORAL) +
+  geom_point(data = key, aes(y = y + 0.17, x = OR, colour = "LUAD"), shape = 21, size = 1.9,
+             fill = "white", stroke = 0.7) +
+  geom_point(data = key, aes(y = y - 0.17, x = lOR, colour = "LUSC"), shape = 22, size = 1.7,
+             fill = CORAL) +
+  scale_colour_manual(values = HCOL, name = NULL,
+                      guide = guide_legend(override.aes = list(shape = c(21, 22), size = 2,
+                                                               fill = c("white", CORAL)))) +
+  scale_x_log10(breaks = c(0.5, 1, 2, 5, 10), labels = c("0.5", "1", "2", "5", "10"),
+                limits = c(0.22, 6500)) +
+  scale_y_continuous(breaks = key$y, labels = levels(f2$label),
+                     limits = c(0.3, HEAD + 0.55), expand = c(0, 0)) +
+  labs(x = "Odds ratio for organ involvement (log scale)", y = NULL) +
+  theme(axis.text.y = element_text(size = 6.8), axis.text.x = element_text(size = 7),
+        axis.line.x = element_blank(),
+        legend.position = c(0.015, 0.03), legend.justification = c(0, 0),
+        legend.background = element_rect(fill = alpha("white", 0.85), colour = NA),
+        legend.key.size = unit(0.3, "cm"), legend.text = element_text(size = 7))
 
-# annotation panel: same y scale; contrast label carried in the table (self-identifying rows)
-tab <- data.frame(y = c(HEAD, lu$y),
-                  c0 = c("Contrast", as.character(lu$label)),
-                  c1 = c("LUAD OR (95% CI)", sprintf("%.2f (%.2f\u2013%.2f)", lu$OR, lu$lo, lu$hi)),
-                  c2 = c("LUSC OR (95% CI)", sprintf("%.2f (%.2f\u2013%.2f)", ls_$OR, ls_$lo, ls_$hi)),
-                  c3 = c("P int.", ifelse(lu$p_int < 0.001, "<.001", sprintf("%.2f", lu$p_int))),
-                  c4 = c("MDE", sprintf("%.1f", lu$mde)),
-                  stringsAsFactors = FALSE)
-XS <- c(0.00, 0.315, 0.575, 0.765, 0.875)
-lay <- do.call(rbind, lapply(seq_along(XS), function(k) {
-  data.frame(y = tab$y, x = XS[k], lab = tab[[k + 1]], bold = tab$y == HEAD,
-             stringsAsFactors = FALSE)
-}))
-gg_t <- ggplot(lay, aes(x = x, y = y, label = lab)) +
-  geom_text(aes(fontface = ifelse(bold, "bold", "plain")), hjust = 0, size = 2.28) +
-  scale_y_continuous(limits = YL, expand = c(0, 0)) +
-  scale_x_continuous(limits = c(0, 1), breaks = c(0.2, 0.5, 0.8), labels = c("0.5", "1", "2")) +
-  labs(x = "Odds ratio (log scale)", y = NULL) +
-  theme_classic(base_size = 7) +
-  theme(axis.text.x = element_text(colour = "white", size = 7),
-        axis.ticks.x = element_line(colour = "white"),
-        axis.title.x = element_text(colour = "white", size = 7),
-        axis.line.x = element_line(colour = "white"),
-        axis.line.y = element_blank(), axis.ticks.y = element_blank(),
-        axis.text.y = element_blank(),
-        plot.margin = margin(t = 8, r = 2, b = 8, l = 2))
-
-lg <- tableGrob(data.frame(x = c("\u25cb LUAD", "\u25a0 LUSC"), check.names = FALSE), rows = NULL,
-                theme = ttheme_minimal(base_size = 7,
-                                       core = list(fg_params = list(hjust = 0, x = 0.02, col = c(NAVY, CORAL)),
-                                                   bg_params = list(fill = NA)),
-                                       colhead = list(fg_params = list(col = "white")),
-                                       padding = unit(c(0.8, 2), "mm")))
-
-fig2 <- arrangeGrob(gg_f, arrangeGrob(gg_t, lg, ncol = 1, heights = c(5.4, 0.55)),
-                    ncol = 2, widths = c(2.05, 4.05))
-ggsave(file.path(FIG, "Figure2.pdf"), fig2, width = 7.4, height = 3.9, device = cairo_pdf, bg = "white")
-ggsave(file.path(FIG, "Figure2.tiff"), fig2, width = 7.4, height = 3.9, dpi = 300, compression = "lzw", bg = "white")
-ggsave(file.path(FIG, "Figure2.png"), fig2, width = 7.4, height = 3.9, dpi = 300, bg = "white")
+ggsave(file.path(FIG, "Figure2.pdf"), p2, width = 7.4, height = 3.7, device = cairo_pdf, bg = "white")
+ggsave(file.path(FIG, "Figure2.tiff"), p2, width = 7.4, height = 3.7, dpi = 300, compression = "lzw", bg = "white")
+ggsave(file.path(FIG, "Figure2.png"), p2, width = 7.4, height = 3.7, dpi = 300, bg = "white")
 cat("Figure2 done\n")
 
 # ---------------------------------------------------------------- Figure 3 ---

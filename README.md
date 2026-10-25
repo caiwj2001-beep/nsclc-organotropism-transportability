@@ -56,6 +56,25 @@ python -m venv .venv
 Each script reads the raw files from a `DATA_DIR` constant at the top; point it at your local copy before running.
 Outputs are written to the working directory and are not included in the repository.
 
+
+## V2 analysis (leave-one-out burden)
+
+The primary models condition on `log(1 + N - Y_j)`, where `N` is the number of involved organs and `Y_j` the
+organ being modelled. Because `N` sums the eight organ indicators, one of which is the outcome, the conventional
+`log(N)` covariate imposes an arithmetic constraint that mechanically lowers the expected count of the other
+organs. Scripts 13 to 15 refit every principal contrast under the leave-one-out form, report the `log(N)`
+estimate alongside it, recompute the four sensitivity scenarios, and rebuild the figure data.
+
+| Step | Script | Purpose |
+|---|---|---|
+| 14 | `13_leave_one_out_burden.py` | leave-one-out refit for the eight principal contrasts |
+| 15 | `14_v2_primary_numbers.py` | primary estimates, BH across the eight, attenuation series, missingness |
+| 16 | `15_v2_scenarios_and_interaction.py` | four scenarios, histology-by-burden specification check, figure data |
+
+Result of the specification change: all eight contrasts survive; the two inverse associations (STK11 with
+pleura and with liver) attenuate toward the null (0.67 to 0.75, 0.70 to 0.78), which is what the arithmetic
+constraint predicts, and remain below 1.
+
 ## Notes and pitfalls
 
 - `data_clinical_sample.csv` has no `patientId` column; the sample-to-patient mapping is taken from
